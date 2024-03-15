@@ -7,31 +7,48 @@ from pathlib import Path
 from typing import Dict, List
 
 from discover import discover
-from wemo_device import WemoDevice
-from icons import STATE_DOWN_ICON, STATE_UNKNOWN_ICON, STATE_UP_ICON
+from wemo_device import DEVICE_UNKNOWN, STATE_UNKNOWN, WemoDevice
+import icons
 
 
 REGISTRY_JSON = Path(__file__).parent.joinpath("config", "registry.json")
 
 LIST_COMMAND = "list"
-UPDATE_COMMANDS = ["update", "scan", "discover"]
+INFO_COMMAND = "info"
+
+DISCOVER_COMMANDS = ["discover", "scan", "update"]
+
 ENABLE_COMMANDS = ["on", "enable"]
 DISABLE_COMMANDS = ["off", "disable"]
 CONTROL_COMMANDS = ENABLE_COMMANDS + DISABLE_COMMANDS
-COMMANDS = [LIST_COMMAND] + UPDATE_COMMANDS + CONTROL_COMMANDS
+
+COMMANDS = [LIST_COMMAND, INFO_COMMAND] + DISCOVER_COMMANDS + \
+           CONTROL_COMMANDS
+
+ALEXA_IP = "192.168.1.173"
+ALEXA = "Alexa"
+
+HEADER_ROW = ["State", "Name", "Host/IP Address", "Status"]
+HEADER_DELIMITER_ROW = ['-'*6, '-'*32, '-'*16, '-'*6]
+DISPLAY_FORMAT_ROW = "{:<7}  {:<32}  {:<16}  {:<6}"
 
 
 def _parse_args() -> argparse.Namespace:
     """ Parse command line arguments. """
     commands = ", ".join(COMMANDS)
     parser = argparse.ArgumentParser("Belkin Wemo command line interface")
-    parser.add_argument("-d", "--device", default="", type=str,
-                        dest="device", help="Device name")
-    #parser.add_argument("-g", "--group", default="", type=str,
-    #                    dest="group", help="Device group")
+    parser.add_argument("-s", "--scan", "--discover", required=False,
+                        dest="scan", action="store_true",
+                        help="Scan for or discover devices")
+
+    #parser.add_argument("-g", "--group", required=False, default="",
+    #                    type=str, dest="group", help="Device group")
+
+    parser.add_argument("-d", "--device", required=False, default="",
+                        type=str, dest="device", help="Device name")
+
     parser.add_argument("-c", "--command", default="list", type=str,
-                        dest="command",
-                        help="One of: " + commands)
+                        dest="command", help="One of: " + commands)
     return parser.parse_args()
 
 
@@ -71,27 +88,28 @@ def _tag(name: str) -> str:
     return tag.replace(" ", "-")
 
 
+def _get_device_name(device: WemoDevice) -> str:
+    """ Returns device name. """
+    name = device.name()
+    if name == DEVICE_UNKNOWN and device.address() == ALEXA_IP:
+        name = ALEXA
+
+    return name
+
+
 def _load_registered_devices() -> Dict[str, WemoDevice]:
     """ Load Belkin Wemo devices from local registry. """
     devices = {}
     for data in _load_registry():
-        if "uri" in data:
-            wemo = WemoDevice(data["uri"])
-            tag = _tag(wemo.name())
-            devices[tag] = wemo
+        address = data.get("host", "unknown")
+        yuri = data["uri"]
+        wemo = WemoDevice(address, yuri)
+
+        name = _get_device_name(wemo)
+        tag = _tag(name)
+        devices[tag] = wemo
 
     return devices
-
-
-def _get_icon(state: str) -> object:
-    """ Return device icon for state. """
-    if state.lower() in ["off", "0"]:
-        return STATE_DOWN_ICON
-
-    if state.lower() in ["on", "1"]:
-        return STATE_UP_ICON
-
-    return STATE_UNKNOWN_ICON
 
 
 def _get_registered_devices() -> Dict[str, WemoDevice]:
@@ -107,16 +125,34 @@ def _get_registered_devices() -> Dict[str, WemoDevice]:
     return _load_registered_devices()
 
 
+def _print_device_info(device: WemoDevice, details: bool = False) -> None:
+    """ Print info about a specific device. """
+    name = _get_device_name(device)
+    address = device.address()
+
+    state = device.state() or "?"
+    icon = icons.get(state)
+
+    if name == DEVICE_UNKNOWN:
+        icon = icons.get(name)
+
+    row = ["", name, address, state]
+    fmt_row = "{:<4}  {:<32}  {:<16}  {:<6}"
+    print(" ", icon, fmt_row.format(*row))
+
+    if details:
+        data = json.dumps(device.asdict(), indent=4)
+        print(f"\nDetails:\n{data}")
+
+
 def _list_registered_devices() -> None:
     """ List out registered devices. """
     devices = _get_registered_devices()
+    print("#", DISPLAY_FORMAT_ROW.format(*HEADER_ROW))
+    print("#", DISPLAY_FORMAT_ROW.format(*HEADER_DELIMITER_ROW))
+
     for tag in list(devices.keys()):
-        dev = devices[tag]
-        name = dev.name()
-        address = dev.address()
-        state = dev.state()
-        icon = _get_icon(state)
-        print(f"{name.ljust(32)} {address.ljust(16)} {state} {icon}")
+        _print_device_info(devices[tag])
 
 
 def _cli() -> None:
@@ -125,7 +161,7 @@ def _cli() -> None:
     command = zargs.command
     names = _get_device_names(zargs)
 
-    if command in UPDATE_COMMANDS:
+    if zargs.scan or command in DISCOVER_COMMANDS:
         _update_registry()
         _list_registered_devices()
         return
@@ -148,12 +184,14 @@ def _cli() -> None:
         wemo = devices[tag]
         if command in ENABLE_COMMANDS:
             state = wemo.on()
-            icon = _get_icon(state)
-            print(f"  - Wemo {wemo.name()}  state = {state} {icon}")
+            print(f"  - Wemo '{wemo.name()}' state = {state}")
+            _print_device_info(wemo)
         elif command in DISABLE_COMMANDS:
             state = wemo.off()
-            icon = _get_icon(state)
-            print(f"  - Wemo {wemo.name()}  state = {state} {icon}")
+            print(f"  - Wemo '{wemo.name()}' state = {state}")
+            _print_device_info(wemo)
+        elif command in [INFO_COMMAND]:
+            _print_device_info(wemo, details=True)
 
 
 #

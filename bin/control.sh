@@ -1,6 +1,5 @@
 #!/bin/bash
 
-readonly SCRIPT_NAME="$0"
 readonly CONTROLLER_CLI="${HOME}/github/home-controller/cli.py"
 
 
@@ -21,7 +20,7 @@ function _control_device() {
     local state=${2:-""}
 
     if [ -z "${name}" ] || [ -z "${state}" ]; then
-        echo "Usage: ${SCRIPT_NAME}  <name>  on|off"
+        echo "Usage: $0  <name>  on|off"
         echo "Control a device - turn it on or off."
         echo ""
         echo "Where:"
@@ -33,15 +32,15 @@ function _control_device() {
         echo "            Note there are 2 spaces between my and desk."
         echo ""
         echo "Examples: "
-        echo "    ${SCRIPT_NAME}  'LivingRoom Floor Lamp'  on  # or ON"
-        echo "    ${SCRIPT_NAME}  livingroom-floor-lamp  ON  # or ON"
-        echo "    ${SCRIPT_NAME}  \"Hutch Lights\"  OFF"
-        echo "    ${SCRIPT_NAME}  hutch-Lights  off"
+        echo "    $0  'LivingRoom Floor Lamp'  on  # or ON"
+        echo "    $0  livingroom-floor-lamp  ON  # or ON"
+        echo "    $0  \"Hutch Lights\"  OFF"
+        echo "    $0  hutch-Lights  off"
         echo ""
         exit 64
     fi
 
-    echo "  - Sending device ${name} command to turn itself ${state} ..."
+    echo "  - Sending device '${name}' command to turn itself ${state} ..."
     exec "${CONTROLLER_CLI}" -d "${name}" -c "${state}"
 
 }  #  End of function  _control_device.

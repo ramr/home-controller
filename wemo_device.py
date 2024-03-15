@@ -21,6 +21,9 @@ SERVICE_LIST_NODE_TAG = "serviceList"
 SERVICES_TAG = "services"
 
 DATA_DICT_NAME_KEY = "friendlyName"
+DEVICE_UNKNOWN = "Unknown Device"
+ACTION_GET = '"urn:Belkin:service:basicevent:1#GetBinaryState"'
+ACTION_SET = '"urn:Belkin:service:basicevent:1#SetBinaryState"'
 
 REQUEST_HEADERS = {"Content-Type": 'text/xml; charset="utf-8"',
                    "User-Agent": "gecko-home-cli/1.0",
@@ -78,6 +81,7 @@ def _parse_xml(data: str, debug: bool = False) -> ElementTree.Element:
 def _get_device_xml(uri: str, timeout: int = REQUEST_TIMEOUT,
                     debug: bool = False) -> ElementTree.Element:
     """ Get device xml (setup.xml) from the specified uri. """
+    _log(f"Sending request to {uri} ...")
     info_request = request.Request(url=uri, method="GET")
     with request.urlopen(info_request, timeout=timeout) as zreq:
         _log(f"Location: {uri} -> {zreq.status} {zreq.reason}", debug)
@@ -112,12 +116,15 @@ def _get_device_info(device: ElementTree.Element) -> Dict[str, Any]:
     return info
 
 
-def _wemo_soap_request(uri: str, data: str,
+def _wemo_soap_request(uri: str, action: str, data: str,
                        debug: bool = False) -> ElementTree.Element:
     """ Send a soap request to a wemo device. """
+    headers = copy.deepcopy(REQUEST_HEADERS)
+    headers["SOAPACTION"] = action
+
     _log(f"Sending wemo soap request to {uri} ...")
-    soap_request = request.Request(uri, headers=REQUEST_HEADERS,
-                                   method="POST", data=data.encode("utf-8"))
+    soap_request = request.Request(uri, headers=headers, method="POST",
+                                   data=data.encode("utf-8"))
 
     with request.urlopen(soap_request, timeout=REQUEST_TIMEOUT) as zreq:
         _log(f"Request: {uri} -> {zreq.status} {zreq.reason}", debug)
@@ -131,7 +138,7 @@ def _get_device_state(uri: str, debug: bool = False) -> str:
     """ Build and send a soap request to get a device's binary state. """
     data = GET_BINARY_STATE_SOAP_REQUEST
     _log("Sending soap request to get device state ...", debug)
-    root = _wemo_soap_request(uri, data, debug)
+    root = _wemo_soap_request(uri, ACTION_GET, data, debug)
     if root is None:
         _log("invalid soap response", debug)
         return None
@@ -151,7 +158,8 @@ def _set_device_state(uri: str, state: bool, debug: bool = False) -> str:
     params = {"STATE": 1 if state else 0}
     data = SET_BINARY_STATE_SOAP_REQUEST_TEMPLATE.safe_substitute(params)
     _log(f"Sending soap request to set device to {state} ...", debug)
-    root = _wemo_soap_request(uri, data, debug)
+
+    root = _wemo_soap_request(uri, ACTION_SET, data, debug)
     if root is None:
         _log("invalid soap response", debug)
         return None
@@ -169,8 +177,9 @@ def _set_device_state(uri: str, state: bool, debug: bool = False) -> str:
 class WemoDevice:
     """ A Belkin Wemo smart device. """
 
-    def __init__(self, yuri: str, debug: bool = False):
+    def __init__(self, addr: str, yuri: str, debug: bool = False):
         """ Initialize WemoDevice. """
+        self._address = addr
         self._uri = yuri
         self._debug = debug
         self._data = {}
@@ -178,7 +187,6 @@ class WemoDevice:
         earl = parse.urlparse(yuri)
         base_uri = f"{earl.scheme}://{earl.hostname}:{earl.port}"
         self._control_uri = f"{base_uri}/{CONTROL_URI_PATH}"
-        self._address = earl.hostname
 
         self._load()
 
@@ -190,7 +198,7 @@ class WemoDevice:
 
     def name(self) -> str:
         """ Friendly name for this device. """
-        return self._data.get(DATA_DICT_NAME_KEY, "unknown")
+        return self._data.get(DATA_DICT_NAME_KEY, DEVICE_UNKNOWN)
 
 
     def state(self) -> str:
@@ -217,20 +225,20 @@ class WemoDevice:
     def on(self) -> str:
         """ Switch on the device. """
         name = self.name()
-        self._log(f"Turning on WemoDevice {name} ...")
+        self._log(f"Turning on WemoDevice '{name}' ...")
 
         zstate = _set_device_state(self._control_uri, 1, debug=self._debug)
-        self._log(f"WemoDevice {name} state = {zstate}")
+        self._log(f"WemoDevice '{name}' state = {zstate}")
         return zstate
 
 
     def off(self) -> str:
         """ Switch off the device. """
         name = self.name()
-        self._log(f"Turning off WemoDevice {name} ...")
+        self._log(f"Turning off WemoDevice '{name}' ...")
 
         zstate = _set_device_state(self._control_uri, 0, debug=self._debug)
-        self._log(f"WemoDevice {name} state = {zstate}")
+        self._log(f"WemoDevice '{name}' state = {zstate}")
         return zstate
 
 
@@ -249,7 +257,7 @@ class WemoDevice:
     def _load(self) -> None:
         """ Populates Wemo smart device information. """
         root = _get_device_xml(self._uri, debug=self._debug)
-        if not root:
+        if root is None:
             self._log(f"Error loading info from {self._uri}")
             return
 
@@ -269,7 +277,10 @@ def _dump_wemo_device_info() -> None:
     if len(sys.argv) >= 3:
         debug_flag = True
 
-    device = WemoDevice(yuri=sys.argv[1], debug=debug_flag)
+    yuri = sys.argv[1]
+    earl = parse.urlparse(yuri)
+    device = WemoDevice(addr=earl.hostname, yuri=yuri, debug=debug_flag)
+
     print(f"cli-test: Device name = {device.name()}")
     print(f"cli-test: address = {device.address()}")
     print(f"cli-test: state = {device.state()}")
