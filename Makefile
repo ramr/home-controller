@@ -11,6 +11,9 @@ tests:	lint unittests
 
 
 lint:
+	@echo "  - Linting README ..."
+	@(markdownlint README.md || :)
+
 	@echo "  - Linting python3 sources ..."
 	python3 -m pylint *.py
 

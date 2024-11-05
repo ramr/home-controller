@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Dict, List
 
 from discover import discover
-from wemo_device import DEVICE_UNKNOWN, STATE_UNKNOWN, WemoDevice
+from wemo_device import DEVICE_UNKNOWN, WemoDevice
 import icons
 
 

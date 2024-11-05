@@ -1,6 +1,9 @@
 #!/bin/bash
 
-readonly CONTROLLER_CLI="${HOME}/github/home-controller/cli.py"
+SCRIPT_DIR=$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+readonly SCRIPT_DIR
+
+readonly CONTROLLER_CLI="${SCRIPT_DIR}/cli.py"
 
 
 #
